@@ -1,0 +1,443 @@
+# Transforming data using linear algebra
+FMML Module 1, Lab 4
+Matrix transformations are at the heart of many machine learning algorithms. In this lab, we'll visualize the effect of some simple transformations on a unit square and then visualize it using the MNIST dataset. We also see what data normalization means and how it can help in improving the accuracy of machine learning models.
+import numpy as np
+import matplotlib.pyplot as plt
+from keras.datasets import mnist
+# You don't need to understand these functions
+def plotGrid(transform, unit, linestyle=":", fig=None, ax=None):
+    lim1 = -100
+    lim2 = 100
+    def mat2xy(start, end):
+        if len(start.shape) == 1:
+            start = np.expand_dims(start, 0)
+            end = np.expand_dims(end, 0)
+        nan = np.ones(len(start)) * np.nan
+        x = np.stack((start[:, 0], end[:, 0], nan)).T.reshape(-1)
+        y = np.stack((start[:, 1], end[:, 1], nan)).T.reshape(-1)
+        return x, y
+    def parallellines(axis, addend, lines, unit):
+        addend = np.repeat(np.expand_dims(addend, 0), lines * 2, 0)
+        unit = np.expand_dims(np.arange(-lines, lines) * unit, 1)
+        unit = unit - lines
+        addend = addend * unit
+        lines = np.expand_dims(axis, 0) + addend
+        return np.concatenate((lines, lines * -1))
+    if fig is None:
+        fig, ax = plt.subplots(figsize=(5, 5))
+    transform = transform.astype(float)
+    xaxis = transform[0]
+    yaxis = transform[1]
+    # plot lines parallel to the x axis
+    lines1 = parallellines(xaxis * lim1, yaxis, 100, unit)
+    lines2 = parallellines(xaxis * lim2, yaxis, 100, unit)
+    x, y = mat2xy(lines1, lines2)
+    plt.plot(x, y, linestyle + "k", linewidth=0.5)
+    # plot x axis
+    x, y = mat2xy(xaxis * lim1, xaxis * lim2)
+    plt.plot(x, y, linestyle, color="#440077")
+    # plot  lines parallel to the y axis
+    lines1 = parallellines(yaxis * lim1, xaxis, 100, unit)
+    lines2 = parallellines(yaxis * lim2, xaxis, 100, unit)
+    x, y = mat2xy(lines1, lines2)
+    plt.plot(x, y, linestyle + "k", linewidth=0.5)
+    # plot y axis
+    x, y = mat2xy(yaxis * lim1, yaxis * lim2)
+    plt.plot(x, y, linestyle, color="#aa5500")
+    return fig, ax
+def plotData(X, y, xlabel="hole", ylabel="bound", fig=None, ax=None):
+    if fig is None:
+        fig, ax = plt.subplots()
+    for ii in range(nclasses):
+        plt.scatter(X[y == ii, 0], X[y == ii, 1])
+    plt.legend([str(i) for i in range(nclasses)])
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    lim2 = X.max()
+    lim1 = X.min()
+    return fig, ax
+## Matrix transformations on data
+Note: This lab involves a lot of matrix operations. If you are not familiar with them, please go through the resources given in class before proceeding. You can also review Khan Academy's excellent linear algebra [resources](https://www.khanacademy.org/math/linear-algebra/matrix-transformations).
+A 2D coordinate system is defined by its basis vectors, i and j. Any point in this 2D space can be represented as a linear combination of these basis vectors. For example, the point (a,b) can be represented as:
+$$\begin{equation}
+\left\{  \begin{aligned}a \\ b \end{aligned} \right\} = a\left\{  \begin{aligned}1 \\ 0 \end{aligned} \right\} + b\left\{  \begin{aligned}0 \\ 1 \end{aligned} \right\} = a\hat{i} + b\hat{j}
+\end{equation}$$
+A matrix can be used to perform a linear transformation on the basis vectors. The new basis vectors $\hat{i}$ and $\hat{j}$ are given by the product of the matrix and the basis vectors of the standard coordinate system.
+In the standard coordinate system (Let us call it T0), the basis vectors are
+$$\begin{equation}
+i = \left\{  \begin{aligned}1 \\ 0 \end{aligned} \right\}
+\end{equation}$$
+and
+$$\begin{equation} j = \left\{ \begin{aligned} 0 \\ 1\end{aligned} \right\} \end{equation}$$
+We can use any two vectors as basis vectors for a new coordinate system as long as they are not colinear. For example, let us call this new coordinate system T1:
+$$\begin{equation}
+i = \left\{  \begin{aligned}1 \\ -1 \end{aligned} \right\}
+\end{equation}$$
+and
+$$\begin{equation} j = \left\{ \begin{aligned} 0 \\ 2 \end{aligned} \right\} \end{equation}$$
+Suppose we have a point [a,b] in the T1 coordinate system. Its representation in the standard system T0 can be obtained by the following matrix multiplication:
+$$ \begin{equation}
+\left\{  \begin{aligned}a' \\ b' \end{aligned} \right\} =
+\left\{  \begin{aligned}&1 & 0 \\ -&1 & 2 \end{aligned} \right\}
+\left\{  \begin{aligned}a \\ b \end{aligned} \right\}
+\end{equation}$$
+where the columns of the matrix are the basis vectors of T1.
+Let us see this in action:
+T0 = np.array([[1, 0], [0, 1]])
+T1 = np.array([[1, 0], [-1, 2]])
+data1 = np.array([5, 4])  # the data in T1 coordinate system
+data0 = np.matmul(T1, data1)  # the data in T0 coordinate system
+print("Data in T0 = ", data0)
+print("Data in T1 = ", data1)
+We can visualize this below. T0 is shown with dotted lines and T1 is shown with solid lines.
+fig, ax = plotGrid(T1.T, 1, "-")
+plotGrid(T0.T, 1, fig=fig, ax=ax)
+plt.scatter(data0[0], data0[1])
+ax.set_xlim(-10, 10)
+ax.set_ylim(-10, 10)
+ax.set_xticks([])
+ax.set_yticks([])
+plt.show()
+Look at the coordinates of the blue dot. In T0 (dotted lines), the position is [5,3] where it is [5,4] in T1. Feel free to experiment with different data points and coordinate systems.
+Remember that we can achieve the same thing by post-multiplying the transpose of the transformation matrix to the data. This will come in handy when transforming multiple data points at once:
+data0_a = np.matmul(T1, data1)
+data0_b = np.matmul(data1, T1.T)
+print(data0_a)
+print(data0_b)
+Why is transforming data useful? Data transformations cause the distance between data points to change. This will affect distance-based algorithms such as nearest neighbour
+# let us define 3 points in T1
+A1 = np.array([3, 3])
+B1 = np.array([2, -5])
+C1 = np.array([1, -1])
+# the corresponding points in T0:
+A0 = np.matmul(T1, A1)
+B0 = np.matmul(T1, B1)
+C0 = np.matmul(T1, C1)
+def dist(a, b):
+    # function to calculate Euclidean distance between two points
+    diff = a - b
+    sq = diff * diff
+    return np.sqrt(sq.sum())
+# distance between the points in T1
+print("Distance between A and B in T1 = ", dist(A1, B1))
+print("Distance between B and C in T1 = ", dist(B1, C1))
+print("Distance between A and C in T1 = ", dist(A1, C1))
+print("")
+# distnace between the points in T0
+print("Distance between A and B in T0 = ", dist(A0, B0))
+print("Distance between B and C in T0 = ", dist(B0, C0))
+print("Distance between A and C in T0 = ", dist(A0, C0))
+We see that in T1, B and C are the closest whereas in T0, A and C are the closest. These kinds of changes will affect the predictions returned by the nearest neighbour algorithm.
+## Transformations on MNIST
+Let us experiment with a subset of the MNIST dataset. We will extract two features from the database for our experiment. We will then transform the data using a transformation matrix and visualize the data in the new coordinate system. We will also see how normalization can help in improving the accuracy of the model. We will reuse previous labs code for this.
+def NN1(traindata, trainlabel, query):
+    """
+    This function takes in the training data, training labels and a query point
+    and returns the predicted label for the query point using the nearest neighbour algorithm
+    traindata: numpy array of shape (n,d) where n is the number of samples and d is the number of features
+    trainlabel: numpy array of shape (n,) where n is the number of samples
+    query: numpy array of shape (d,) where d is the number of features
+    returns: the predicted label for the query point which is the label of the training data which is closest to the query point
+    """
+    diff = (
+        traindata - query
+    )  # find the difference between features. Numpy automatically takes care of the size here
+    sq = diff * diff  # square the differences
+    dist = sq.sum(1)  # add up the squares
+    label = trainlabel[np.argmin(dist)]
+    return label
+def NN(traindata, trainlabel, testdata):
+    """
+    This function takes in the training data, training labels and test data
+    and returns the predicted labels for the test data using the nearest neighbour algorithm
+    traindata: numpy array of shape (n,d) where n is the number of samples and d is the number of features
+    trainlabel: numpy array of shape (n,) where n is the number of samples
+    testdata: numpy array of shape (m,d) where m is the number of test samples and d is the number of features
+    returns: the predicted labels for the test data which is the label of the training data which is closest to each test point
+    """
+    predlabel = np.array([NN1(traindata, trainlabel, i) for i in testdata])
+    return predlabel
+def Accuracy(gtlabel, predlabel):
+    """
+    This function takes in the ground-truth labels and predicted labels
+    and returns the accuracy of the classifier
+    gtlabel: numpy array of shape (n,) where n is the number of samples
+    predlabel: numpy array of shape (n,) where n is the number of samples
+    returns: the accuracy of the classifier which is the number of correct predictions divided by the total number of predictions
+    """
+    assert len(gtlabel) == len(
+        predlabel
+    ), "Length of the ground-truth labels and predicted labels should be the same"
+    correct = (
+        gtlabel == predlabel
+    ).sum()  # count the number of times the groundtruth label is equal to the predicted label.
+    return correct / len(gtlabel)
+def cumArray(img):
+    img2 = img.copy()
+    for ii in range(1, img2.shape[1]):
+        # for every row, add up all the rows above it.
+        img2[ii, :] = img2[ii, :] + img2[ii - 1, :]
+    img2 = img2 > 0
+    return img2
+def getHolePixels(img):
+    """
+    This function takes in a binary image and returns the pixels that are holes in the image
+    img: numpy array of shape (n,m) where n is the height of the image and m is the width of the image
+    returns: a binary image of the same shape as the input image where the holes are filled in
+    """
+    im1 = cumArray(img)
+    # rotate and cumulate it again for differnt direction
+    im2 = np.rot90(cumArray(np.rot90(img)), 3)
+    im3 = np.rot90(cumArray(np.rot90(img, 2)), 2)
+    im4 = np.rot90(cumArray(np.rot90(img, 3)), 1)
+    # this will create a binary image with all the holes filled in.
+    hull = im1 & im2 & im3 & im4
+    # remove the original digit to leave behind the holes
+    hole = hull & ~(img > 0)
+    return hole
+def getHullPixels(img):
+    """
+    This function takes in a binary image and returns the pixels that are the convex hull of the image
+    img: numpy array of shape (n,m) where n is the height of the image and m is the width of the image
+    returns: a binary image of the same shape as the input image where the convex hull is filled in
+    """
+    im1 = cumArray(img)
+    # rotate and cumulate it again for differnt direction
+    im2 = np.rot90(cumArray(np.rot90(img)), 3)
+    im3 = np.rot90(cumArray(np.rot90(img, 2)), 2)
+    im4 = np.rot90(cumArray(np.rot90(img, 3)), 1)
+    # this will create a binary image with all the holes filled in.
+    hull = im1 & im2 & im3 & im4
+    return hull
+def minus(a, b):
+    """
+    This function takes in two binary images and returns the difference between the two images
+    """
+    return a & ~b
+def getBoundaryPixels(img):
+    """
+    This function takes in a binary image and returns the pixels that are the boundary of the image
+    img: numpy array of shape (n,m) where n is the height of the image and m is the width of the image
+    returns: a binary image of the same shape as the input image where the boundary is filled in
+    """
+    img = img.copy() > 0  # binarize the image
+    rshift = np.roll(img, 1, 1)
+    lshift = np.roll(img, -1, 1)
+    ushift = np.roll(img, -1, 0)
+    dshift = np.roll(img, 1, 0)
+    boundary = (
+        minus(img, rshift)
+        | minus(img, lshift)
+        | minus(img, ushift)
+        | minus(img, dshift)
+    )
+    return boundary
+# loading the dataset
+(train_X, train_y), (test_X, test_y) = mnist.load_data()
+train_X = train_X / 255
+test_X = test_X / 255
+nclasses = 4
+# get only for the first 4 classes
+train_X = train_X[train_y < nclasses]
+train_y = train_y[train_y < nclasses]
+test_X = test_X[test_y < nclasses]
+test_y = test_y[test_y < nclasses]
+# We are only taking a subset of the training set
+train_X = train_X[::100].copy()
+train_y = train_y[::100].copy()  # do the same to the labels
+# taking a subset of the test set. This code takes every 500th sample
+test_X = test_X[::100].copy()
+test_y = test_y[::100].copy()
+# feature extraction
+train_hole = np.array([getHolePixels(i).sum() for i in train_X])
+test_hole = np.array([getHolePixels(i).sum() for i in test_X])
+train_bound = np.array([getBoundaryPixels(i).sum() for i in train_X])
+test_bound = np.array([getBoundaryPixels(i).sum() for i in test_X])
+# train_hull = np.array([getHullPixels(i).sum() for i in train_X])
+# test_hull = np.array([getHullPixels(i).sum() for i in test_X])
+# train_sum = np.sum(train_X, (1, 2)) / (28 * 28)
+# test_sum = np.sum(test_X, (1, 2)) / (28 * 28)
+# create the train and test set by combining the appropriate features
+train_feats = np.vstack(
+    (train_hole, train_bound)).transpose()
+test_feats = np.vstack(
+    (test_hole, test_bound)).transpose()
+Let us plot the samples and see what they look like:
+# fix limits of x and y axis so that we can see what is going on
+xlim = [-100, 300]
+ylim = [-100, 300]
+fig, ax = plotData(train_feats, train_y)
+ax.set_xlim(xlim)
+ax.set_ylim(ylim)
+plt.show()
+Check the baseline accuracy on the test set:
+test_pred = NN(train_feats, train_y, test_feats)
+acc = Accuracy(test_y, test_pred)
+print("Baseline accuracy:", acc*100, "%", "for", nclasses, "classes")
+Let us try transforming the features and checking their accuracy. The intuition to using the transformation matrix is to find the basis vectors of the dataset and transform the data to a new coordinate system where the basis vectors are orthogonal. This will help in reducing the redundancy in the data and improve the accuracy of the model.
+transform = np.array([[0.5, -0.5], [0, 2.5]])
+print(transform)
+train_feats_t = np.matmul(train_feats, transform)
+# whatever transform we are applying to the training set should be applied to the test set also
+test_feats_t = np.matmul(test_feats, transform)
+fig, ax = plotData(train_feats_t, train_y)
+ax.set_xlim(xlim)
+ax.set_ylim(ylim)
+plt.show()
+test_pred = NN(train_feats_t, train_y, test_feats_t)
+acc = Accuracy(test_y, test_pred)
+print("Baseline accuracy:", acc*100, "%", "for", nclasses, "classes")
+# 1. Experiment with different transformation matrices and check the accuracy
+The effect of different transformation matrices on accuracy in machine learning is a crucial aspect to consider when working with data.
+In machine learning, transformation matrices are used to transform the input data into a more suitable form for the algorithm to process. This can include operations such as feature scaling, normalization, and dimensionality reduction.
+#Let's consider an example of a simple linear transformation matrix:
+import numpy as np
+# Define a sample dataset
+X = np.array([[1, 2], [3, 4], [5, 6]])
+# Define a transformation matrix
+A = np.array([[2, 1], [1, 3]])
+# Apply the transformation
+X_transformed = np.dot(X, A)
+print(X_transformed)
+In this example, the transformation matrix A is applied to the input data X using matrix multiplication. The resulting transformed data X_transformed can then be used as input to a machine learning algorithm.
+Now, let's discuss how different transformation matrices can affect the accuracy of a machine learning model.
+Effect of Transformation Matrices on Accuracy
+The choice of transformation matrix can significantly impact the accuracy of a machine learning model. Here are some ways in which different transformation matrices can affect accuracy:
+Feature scaling: If the features in the input data have different scales, a transformation matrix can be used to scale them to a common range. This can improve the accuracy of the model by preventing features with large ranges from dominating the model.
+Dimensionality reduction: If the input data has a high dimensionality, a transformation matrix can be used to reduce the dimensionality while retaining the most important features. This can improve the accuracy of the model by reducing the risk of overfitting.
+Noise reduction: A transformation matrix can be used to reduce noise in the input data, which can improve the accuracy of the model by reducing the impact of noisy data points.
+To experiment with different transformation matrices and check the accuracy, you can follow these steps:
+Split the data: Split the input data into training and testing sets.
+Apply transformation matrices:Apply different transformation matrices to the training data and evaluate the accuracy of the model on the testing data. 3.Compare results: Compare the accuracy of the model with different transformation matrices and select the one that results in the highest accuracy.
+import numpy as np
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score
+from sklearn.model_selection import train_test_split
+# Define a sample dataset
+X = np.array([[1, 2], [3, 4], [5, 6]])
+y = np.array([0, 0, 1])
+# Split the data into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+# Define different transformation matrices
+A1 = np.array([[2, 1], [1, 3]])
+A2 = np.array([[1, 2], [3, 1]])
+A3 = np.array([[3, 1], [1, 2]])
+# Apply the transformation matrices
+X_train_transformed1 = np.dot(X_train, A1)
+X_train_transformed2 = np.dot(X_train, A2)
+X_train_transformed3 = np.dot(X_train, A3)
+# Train and evaluate the model with different transformation matrices
+model1 = LogisticRegression()
+model1.fit(X_train_transformed1, y_train)
+y_pred1 = model1.predict(X_test)
+accuracy1 = accuracy_score(y_test, y_pred1)
+model2 = LogisticRegression()
+model2.fit(X_train_transformed2, y_train)
+y_pred2 = model2.predict(X_test)
+accuracy2 = accuracy_score(y_test, y_pred2)
+model3 = LogisticRegression()
+model3.fit(X_train_transformed3, y_train)
+y_pred3 = model3.predict(X_test)
+accuracy3 = accuracy_score(y_test, y_pred3)
+# Compare the results
+print("Accuracy with transformation matrix A1:", accuracy1)
+print("Accuracy with transformation matrix A2:", accuracy2)
+print("Accuracy with transformation matrix A3:", accuracy3)
+## Questions:
+1. Experiment with different transformation matrices and check the accuracy
+2. Will the same transform used for these two features also work for other features?
+# 2. Will the same transform used for these two features also work for other features? It depends on the model you are using and the characteristics of your data. In some cases, using the same transformation for multiple features can be beneficial, while in other cases, it may not be the best approach.
+For example, if you have features that are highly correlated, using the same transformation for both features can help to reduce the correlation and improve the model's performance.
+On the other hand, if you have features with different distributions or scales, using the same transformation for all features may not be effective. In such cases, it may be better to use different transformations for different features, or to use a transformation that is robust to different distributions, such as the RobustScaler or QuantileTransformer.
+Ultimately, the choice of transformation will depend on the specific characteristics of your data and the goals of your model. It's always a good idea to experiment with different transformations and evaluate their impact on your model's performance.
+Here are some common feature transformations that can be used:
+StandardScaler: Standardizes features by removing the mean and scaling to unit variance.
+MinMaxScaler: Scales features to a common range, usually between 0 and 1.
+MaxAbsScaler: Scales features to a common range, usually between -1 and 1.
+RobustScaler:Scales features using the interquartile range (IQR) instead of the standard deviation.
+QuantileTransformer:Scales features to a common distribution, usually a uniform or normal distribution.
+PowerTransformer: Scales features using a power transformation, such as a square root or logarithmic transformation.
+LogTransformer: Scales features using a logarithmic transformation.
+Normalizer: Scales features to a common norm, usually the L1 or L2 norm.
+import warnings
+warnings.filterwarnings("ignore")
+from sklearn.preprocessing import StandardScaler, MinMaxScaler, MaxAbsScaler, RobustScaler, QuantileTransformer, PowerTransformer, Normalizer
+# Define a sample dataset
+X = np.array([[1, 2], [3, 4], [5, 6]])
+# Apply different transformations
+scaler1 = StandardScaler()
+X_scaled1 = scaler1.fit_transform(X)
+scaler2 = MinMaxScaler()
+X_scaled2 = scaler2.fit_transform(X)
+scaler3 = MaxAbsScaler()
+X_scaled3 = scaler3.fit_transform(X)
+scaler4 = RobustScaler()
+X_scaled4 = scaler4.fit_transform(X)
+scaler5 = QuantileTransformer()
+X_scaled5 = scaler5.fit_transform(X)
+scaler6 = PowerTransformer()
+X_scaled6 = scaler6.fit_transform(X)
+scaler7 = Normalizer()
+X_scaled7 = scaler7.fit_transform(X)
+import warnings
+warnings.filterwarnings("ignore")
+import itertools
+from sklearn.model_selection import cross_val_score
+from sklearn.linear_model import LogisticRegression
+import pandas as pd
+# Example data
+data = pd.read_csv('data.csv')
+X = data.drop('target', axis=1)
+y = data['target']
+# Model to evaluate
+model = LogisticRegression()
+# Function to evaluate combinations of features
+def evaluate_combinations(X, y, feature_combinations):
+    results = []
+    for combination in feature_combinations:
+        X_subset = X[list(combination)]
+        scores = cross_val_score(model, X_subset, y, cv=5, scoring='accuracy')
+        results.append((combination, scores.mean()))
+    return results
+# Generate combinations of features
+features = X.columns
+combinations = list(itertools.combinations(features, 2))
+# Evaluate feature combinations
+results = evaluate_combinations(X, y, combinations)
+# Sort and print results
+results.sort(key=lambda x: x[1], reverse=True)
+for combination, score in results:
+    print(f'Combination: {combination}, Accuracy: {score:.4f}')
+# Data normalization
+Sometimes the features of our data have vastly different scales. This will cause the learning algorithm to give more importance to certain features, reducing its performance. Data normalization is a method in which we transform the features so that they have similar scales.
+Three commonly used feature scaling techniques are rescaling, mean normalization and z-score normalization. Here, we will talk about the simplest one: rescaling.
+$$\begin{equation}
+x' = \frac {x -min(x)} { max(x) - min(x)}
+\end{equation}$$
+For more information, see [this page](https://towardsdatascience.com/data-normalization-in-machine-learning-395fdec69d02).
+def rescale(data):
+    return (data - data.min()) / (data.max() - data.min())
+We have to apply the rescaling to each feature individually. Also remember to apply the same transform we are using on the train set to the test set.
+train_feats_rescaled_x = rescale(train_feats[:, 0])
+train_feats_rescaled_y = rescale(train_feats[:, 1])
+train_feats_rescaled = np.stack((train_feats_rescaled_x, train_feats_rescaled_y), 1)
+test_feats_rescaled_x = rescale(test_feats[:, 0])
+test_feats_rescaled_y = rescale(test_feats[:, 1])
+test_feats_rescaled = np.stack((test_feats_rescaled_x, test_feats_rescaled_y), 1)
+Let us plot the rescaled features:
+fig, ax = plotData(train_feats_rescaled, train_y)
+This type of rescaling makes all the features between 0 and 1.
+Let us calculate the accuracy obtained by this transform:
+test_pred = NN(train_feats_rescaled, train_y, test_feats_rescaled)
+acc = Accuracy(test_y, test_pred)
+print("Accuracy after transform:", acc*100, "%")
+All 2D linear transformations can be repreented by a transformation matrix. So what is the matrix associated with the rescaling function? Actually, we cannot represent rescaling with a matrix multiplication, because it is not a linear transform. Rescaling involves shifting the origin of the data, which is not allowed under linear transformations.
+We can represent rescaling as a matrix multiplication followed by a vector addition. Let our first feature vector be called X and second feature vector be called Y. Suppose we want to rescale a data point [a,b]
+$$ \begin{equation}
+ \left\{  \begin{aligned}a' \\ b' \end{aligned} \right\} =
+ \left\{  \begin{aligned} \frac{a - min(X)}{max(X) - min(X)} \\ \frac{b - min(Y)}{max(Y) - min(Y)} \end{aligned} \right\} =
+ \left\{  \begin{aligned}&\frac{1}{max(X)-min(X)} &0\\ &0 &\frac{1}{max(Y)-min(Y)} \end{aligned}
+ \right\}\left\{  \begin{aligned}a \\ b \end{aligned} \right\} +
+ \left\{  \begin{aligned} \frac{ -min(X)}{max(X) - min(X)} \\ \frac{-min(Y)}{max(Y) - min(Y)} \end{aligned} \right\}
+\end{equation}$$
+You can verify this yourself if you wish, though it is not necessary.
